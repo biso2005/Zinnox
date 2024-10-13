@@ -33,7 +33,7 @@
  
     - name: Copy node_exporter.service file to /etc/systemd/system
       copy:
-        src: node_exporter.service.js
+        src: node_exporter.service.j2
         dest: /etc/systemd/system/node_exporter.service
         mode: '0644'
       become: yes
