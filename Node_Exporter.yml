@@ -1,47 +1,56 @@
----
-- name: Setup node-exporter service
-  hosts: all
-  vars:
-    version: 1.4.0
-  gather_facts: no
- 
-  tasks:
-    - name: Install wget package
-      apt:
-        name: wget
-        state: latest
-        update_cache: yes
-      become: yes
- 
-    - name: Download node exporter
-      command: wget https://github.com/prometheus/node_exporter/releases/download/v{{version}}/node_exporter-{{version}}.linux-amd64.tar.gz
- 
-    - name: Extract node exporter archieve
-      command: tar xvfz node_exporter-{{version}}.linux-amd64.tar.gz
- 
-    - name: Move node-exporter to /usr/local/bin
-      command: mv node_exporter-{{version}}.linux-amd64/node_exporter /usr/local/bin/
-      become: yes
- 
-    - name: Create node_exporter user
-      user:
-        name: node_exporter
-        system: yes
-        create_home: no
-        shell: /bin/false
-      become: yes
- 
-    - name: Copy node_exporter.service file to /etc/systemd/system
-      copy:
-        src: ../files/node_exporter.service
-        dest: /etc/systemd/system/node_exporter.service
-        mode: '0644'
-      become: yes
- 
-    - name: Restart and enable node exporter service
-      systemd:
-        name: node_exporter
-        state: restarted
-        enabled: yes
-        daemon_reload: yes
-      become: yes
+- name: check if node exporter exist
+  stat:
+    path: "{{ node_exporter_bin }}"
+  register: __check_node_exporter_present
+- name: create node exporter user
+  user:
+    name: "{{ node_exporter_user }}"
+    append: true
+    shell: /usr/sbin/nologin
+    system: true
+    create_home: false
+- name: create node exporter config dir
+  file:
+    path: "{{ node_exporter_dir_conf }}"
+    state: directory
+    owner: "{{ node_exporter_user }}"
+    group: "{{ node_exporter_group }}"
+- name: if node exporter exist get version
+  shell: "cat /etc/systemd/system/node_exporter.service | grep Version | sed s/'.*Version '//g"
+  when: __check_node_exporter_present.stat.exists == true
+  changed_when: false
+  register: __get_node_exporter_version
+  
+- name: download and unzip node exporter if not exist
+  unarchive:
+    src: "https://github.com/prometheus/node_exporter/releases/download/v{{ node_exporter_version }}/node_exporter-{{ node_exporter_version }}.linux-amd64.tar.gz"
+    dest: /tmp/
+    remote_src: yes
+    validate_certs: no
+- name: move the binary to the final destination
+  copy:
+    src: "/tmp/node_exporter-{{ node_exporter_version }}.linux-amd64/node_exporter"
+    dest: "{{ node_exporter_bin }}"
+    owner: "{{ node_exporter_user }}"
+    group: "{{ node_exporter_group }}"
+    mode: 0755
+    remote_src: yes
+  when: __check_node_exporter_present.stat.exists == false or not __get_node_exporter_version.stdout == node_exporter_version
+- name: clean
+  file:
+    path: /tmp/node_exporter-{{ node_exporter_version }}.linux-amd64/
+    state: absent
+- name: install service
+  template:
+    src: node_exporter.service.j2
+    dest: /etc/systemd/system/node_exporter.service
+    owner: root
+    group: root
+    mode: 0755
+  notify: reload_daemon_and_restart_node_exporter
+- meta: flush_handlers
+- name: service always started
+  systemd:
+    name: node_exporter
+    state: started
+    enabled: yes
