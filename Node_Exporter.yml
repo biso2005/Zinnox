@@ -1,6 +1,6 @@
 ---
 - name: Setup node-exporter service
-  hosts: my_server
+  hosts: all
   vars:
     version: 1.4.0
   gather_facts: no
