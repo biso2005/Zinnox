@@ -1,3 +1,9 @@
+---
+- name: install node-exporter
+  hosts: nodeservers
+  become: yes
+  roles:
+  - node-exporter
 - name: check if node exporter exist
   stat:
     path: "{{ node_exporter_bin }}"
@@ -51,6 +57,13 @@
 - meta: flush_handlers
 - name: service always started
   systemd:
+
+- name: reload_daemon_and_restart_node_exporter
+  systemd:
+    name: node_exporter
+    state: restarted
+    daemon_reload: yes
+    enabled: yes  
     name: node_exporter
     state: started
     enabled: yes
